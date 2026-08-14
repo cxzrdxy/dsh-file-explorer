@@ -12,7 +12,7 @@
 纯文本模型(如 DeepSeek)没法直接「看」文件。这个插件把文件浏览和预览收进 Harness 界面里：
 
 - 📁 **浮动文件树** — 右下角一个按钮，点开即浏览当前工作区的目录树，可逐层展开
-- 🗂️ **平级预览页签** — 点文件后，内容在对话区顶部的页签栏(与「对话」「轨迹」并排)打开，不打断对话流
+- 🗂️ **平级预览页签** — 点文件后，切到对话区顶部的「预览」页签(与「对话」「轨迹」并排)查看内容，不打断对话流
 - 🔄 **实时跟随工作区** — 文件树根路径跟随当前会话的 `cwd`，切换工作区立即刷新
 - 🔒 **只读、安全** — 同源校验 + 路径规范化 + 条目/字节上限，不做写操作
 
@@ -21,7 +21,12 @@
 需要 DeepSeek Harness 的 Web profile 和 `pnpm`：
 
 ```sh
-dsh plugin --profile web add @cxzrdxy/dsh-file-explorer
+# 1. 克隆仓库
+git clone https://github.com/cxzrdxy/dsh-file-explorer.git
+cd dsh-file-explorer
+
+# 2. 安装到 web profile（本地路径）
+dsh plugin --profile web add file:.
 ```
 
 重启 Web profile 即可。包内已提交编译好的 `lib/`，从 checkout 安装不需要消费端构建。
