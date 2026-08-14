@@ -1,0 +1,6 @@
+# dsh-file-explorer bundle patch: mounts the plugin into a profile layer stack.
+# The node half (lib/index.js) serves the file API route; the browser half
+# (lib/client.js) registers the floating file tree and the preview view tab.
+- insert:
+    - id: file-explorer
+      name: '@cxzrdxy/dsh-file-explorer'
