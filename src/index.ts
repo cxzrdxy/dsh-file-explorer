@@ -3,19 +3,19 @@
  * (`/_dsh/file-explorer/api`) serving directory listings and file reads for
  * the browser half. Read-only GET actions: `workspace`, `list`, `read`.
  * Mutating POST actions (JSON body): `create` (a new file inside a
- * directory, never overwrites) and `delete` (files, or empty directories
- * only — non-empty directories and filesystem roots are refused so
- * deletions stay bounded). The route attaches only when a `webServer`
+ * directory, never overwrites) and `delete` (files, or directories — empty
+ * by default, full subtree removal when `recursive: true`; filesystem roots
+ * are always refused so deletions stay bounded). The route attaches only when a `webServer`
  * service exists.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { readdir, readFile, stat, writeFile, unlink, rmdir } from 'node:fs/promises'
+import { readdir, readFile, stat, writeFile, unlink, rmdir, rm } from 'node:fs/promises'
 import { dirname, join, normalize, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only import activates the optional webServer Context declaration.
 import type {} from '@deepseek-ai/dsh-host-webserver'
 
-export const name = 'file-explorer'
+export const name = 'host-file-explorer'
 
 /** Exact route the browser half calls. */
 export const FILE_API_ROUTE = '/_dsh/file-explorer/api'
@@ -140,16 +140,24 @@ async function createFile(parent: string, name: string, content: string): Promis
   return { path: target, name }
 }
 
-/** Delete a file, or an empty directory; refuse filesystem roots. */
-async function deleteTarget(path: string): Promise<unknown> {
+/**
+ * Delete a file, or a directory. `recursive` allows non-empty directories
+ * (full subtree removal); without it only empty directories are accepted.
+ * Filesystem roots are always refused.
+ */
+async function deleteTarget(path: string, recursive: boolean): Promise<unknown> {
   const resolved = resolve(path)
   // dirname(C:\) === C:\ (and / on POSIX): a root has no parent to remove into.
   if (dirname(resolved) === resolved) throw codeError('refusing to delete a filesystem root', 'EROOT')
   const st = await stat(resolved)
   if (st.isDirectory()) {
-    const kids = await readdir(resolved)
-    if (kids.length > 0) throw codeError(`directory not empty (${kids.length} entries)`, 'ENOTEMPTY')
-    await rmdir(resolved)
+    if (recursive) {
+      await rm(resolved, { recursive: true })
+    } else {
+      const kids = await readdir(resolved)
+      if (kids.length > 0) throw codeError(`directory not empty (${kids.length} entries)`, 'ENOTEMPTY')
+      await rmdir(resolved)
+    }
   } else {
     await unlink(resolved)
   }
@@ -237,7 +245,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     if (action === 'delete') {
       const path = typeof payload.path === 'string' ? cleanPath(payload.path) : ''
-      json(res, 200, { ok: true, value: await deleteTarget(path) })
+      const recursive = payload.recursive === true || payload.recursive === 'true'
+      json(res, 200, { ok: true, value: await deleteTarget(path, recursive) })
       return
     }
     err(res, 400, 'bad-action', 'POST action must be create or delete')

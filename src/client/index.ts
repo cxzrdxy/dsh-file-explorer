@@ -56,6 +56,10 @@ const CSS = `
 .fex-row:hover .fex-dir-add{opacity:1}
 .fex-dir-add:hover{background:#f0ede6;color:#1a7f37}
 .fex-dir-add:disabled{opacity:.4;cursor:default}
+.fex-dir-del{flex:none;border:0;background:none;cursor:pointer;color:#b3261e;font-size:12px;line-height:1;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s}
+.fex-row:hover .fex-dir-del{opacity:1}
+.fex-dir-del:hover{background:#fdecea}
+.fex-dir-del:disabled{opacity:.4;cursor:default}
 .fex-del{flex:none;border:0;background:none;cursor:pointer;color:#b3261e;font-size:12px;line-height:1;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s}
 .fex-row:hover .fex-del{opacity:1}
 .fex-del:hover{background:#fdecea}

@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { Button, IconWarningOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconWarningOutline16, Modal, RiskConfirmation } from '@deepseek-ai/dsh-client-ui-primitives'
 import { filePreviewStore } from './filePreviewStore.ts'
 import { FILE_PATH_MIME } from './FileDropZone.tsx'
 
@@ -28,7 +28,7 @@ async function api<T>(action: string, path: string): Promise<T> {
   return (body as { ok: true; value: T }).value
 }
 
-async function apiMut<T>(action: string, payload: Record<string, string>): Promise<T> {
+async function apiMut<T>(action: string, payload: Record<string, string | boolean>): Promise<T> {
   const res = await fetch(API, {
     method: 'POST',
     credentials: 'same-origin',
@@ -78,6 +78,10 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const [deleting, setDeleting] = useState<string | null>(null)
   // Custom delete confirmation dialog (DSH Modal, replaces window.confirm).
   const [confirmTarget, setConfirmTarget] = useState<Entry | null>(null)
+  // Folder deletion (recursive): gated behind RiskConfirmation's explicit
+  // acknowledgement checkbox.
+  const [confirmDir, setConfirmDir] = useState<Entry | null>(null)
+  const [dirAck, setDirAck] = useState(false)
 
   const showNotice = useCallback((text: string): void => {
     setNotice(text)
@@ -218,6 +222,42 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     setConfirmTarget(null)
   }, [])
 
+  // Open the RiskConfirmation dialog for one folder (recursive delete).
+  const askDeleteDir = useCallback((path: string, name: string): void => {
+    setConfirmDir({ path, name, kind: 'dir', size: 0, preview: 'none' })
+    setDirAck(false)
+  }, [])
+
+  const cancelDeleteDir = useCallback((): void => {
+    setConfirmDir(null)
+    setDirAck(false)
+  }, [])
+
+  // Recursively delete the confirmed folder. Clears the preview tab when it
+  // shows a file inside the removed subtree.
+  const confirmDeleteDir = useCallback((): void => {
+    const entry = confirmDir
+    if (entry === null) return
+    setConfirmDir(null)
+    setDirAck(false)
+    setDeleting(entry.path)
+    void apiMut<{ path: string; parent: string }>('delete', { path: entry.path, recursive: true }).then((res) => {
+      const preview = filePreviewStore.get()
+      if (preview !== null
+        && (preview.path === entry.path
+          || preview.path.startsWith(entry.path + '\\')
+          || preview.path.startsWith(entry.path + '/'))) {
+        filePreviewStore.set(null)
+      }
+      showNotice(`已删除「${entry.name}」`)
+      refresh(res.parent)
+    }).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e))
+    }).finally(() => {
+      setDeleting(null)
+    })
+  }, [confirmDir, refresh, showNotice])
+
   // Delete the confirmed file through the mutating API (server refuses
   // non-empty directories). Clears the preview tab when it shows the deleted
   // file.
@@ -256,6 +296,15 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
         <div className="fex-row" style={{ paddingLeft: 8 + depth * 14 }} draggable onClick={() => toggle(path)} onDragStart={(e) => onDragStart(e, path)}>
           <span className="fex-chevron">{expanded ? '▾' : '▸'}</span>
           <span className="fex-name">{base(path)}</span>
+          {path !== state.root ? (
+            <button
+              className="fex-dir-del"
+              title="删除文件夹"
+              aria-label={`删除文件夹 ${base(path)}`}
+              disabled={deleting === path}
+              onClick={(e) => { e.stopPropagation(); askDeleteDir(path, base(path)) }}
+            >{deleting === path ? '…' : '🗑'}</button>
+          ) : null}
           <button
             className="fex-dir-add"
             title="新建文件"
@@ -347,6 +396,22 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
           <p>确定删除「{confirmTarget?.name}」？此操作不可撤销。</p>
         </div>
       </Modal>
+      {/* Folder deletion: DSH RiskConfirmation — the confirm action stays
+          disabled until the destructive nature is acknowledged. */}
+      <RiskConfirmation
+        open={confirmDir !== null}
+        title="删除文件夹"
+        description={confirmDir !== null
+          ? `确定删除文件夹「${confirmDir.name}」？该文件夹及其全部内容将被永久删除，不可恢复。${confirmDir.path}`
+          : ''}
+        acknowledgeLabel="我了解此操作不可撤销"
+        cancelLabel="取消"
+        confirmLabel="删除文件夹"
+        acknowledged={dirAck}
+        onAcknowledgedChange={setDirAck}
+        onCancel={cancelDeleteDir}
+        onConfirm={confirmDeleteDir}
+      />
     </>
   )
 }
