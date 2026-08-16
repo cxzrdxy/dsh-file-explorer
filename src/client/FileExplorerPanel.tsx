@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { Button, IconWarningOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { filePreviewStore } from './filePreviewStore.ts'
 import { FILE_PATH_MIME } from './FileDropZone.tsx'
 
@@ -73,6 +74,8 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const [createBusy, setCreateBusy] = useState(false)
   // Deletion in flight: the row's button shows "…" and is disabled.
   const [deleting, setDeleting] = useState<string | null>(null)
+  // Custom delete confirmation dialog (DSH Modal, replaces window.confirm).
+  const [confirmTarget, setConfirmTarget] = useState<Entry | null>(null)
 
   const showNotice = useCallback((text: string): void => {
     setNotice(text)
@@ -178,10 +181,22 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     })
   }, [newName, state.root, refresh, showNotice])
 
-  // Delete one file through the mutating API (server refuses non-empty
-  // directories). Clears the preview tab when it shows the deleted file.
-  const removeFile = useCallback((entry: Entry): void => {
-    if (!window.confirm(`确定删除「${entry.name}」？此操作不可撤销。`)) return
+  // Open the custom confirmation dialog for one file (replaces window.confirm).
+  const askDelete = useCallback((entry: Entry): void => {
+    setConfirmTarget(entry)
+  }, [])
+
+  const cancelDelete = useCallback((): void => {
+    setConfirmTarget(null)
+  }, [])
+
+  // Delete the confirmed file through the mutating API (server refuses
+  // non-empty directories). Clears the preview tab when it shows the deleted
+  // file.
+  const confirmDelete = useCallback((): void => {
+    const entry = confirmTarget
+    if (entry === null) return
+    setConfirmTarget(null)
     setDeleting(entry.path)
     void apiMut<{ path: string; parent: string }>('delete', { path: entry.path }).then((res) => {
       const preview = filePreviewStore.get()
@@ -193,7 +208,7 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     }).finally(() => {
       setDeleting(null)
     })
-  }, [refresh, showNotice])
+  }, [confirmTarget, refresh, showNotice])
 
   // Drag out of the tree: the absolute path rides a plugin-private MIME plus
   // a text/plain fallback, so FileDropZone (composer drop target) and any
@@ -226,7 +241,7 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
                     title="删除"
                     aria-label={`删除 ${k.name}`}
                     disabled={deleting === k.path}
-                    onClick={(e) => { e.stopPropagation(); removeFile(k) }}
+                    onClick={(e) => { e.stopPropagation(); askDelete(k) }}
                   >{deleting === k.path ? '…' : '🗑'}</button>
                 </div>)
           : null}
@@ -234,45 +249,66 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     )
   }
 
-  if (!open) {
-    return (
-      <button className="fex-toggle" onClick={() => setOpen(true)} title="文件树" aria-label="文件树">
-        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M2 3h4l1.5 2H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 0-1z"/></svg>
-      </button>
-    )
-  }
   return (
-    <div className="fex-panel">
-      <div className="fex-head">
-        <span>文件</span>
-        <span className="fex-head-actions">
-          <button className="fex-btn" onClick={() => { setCreating(v => !v); setNewName('') }} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
-          <button className="fex-close" onClick={() => setOpen(false)}>×</button>
-        </span>
-      </div>
-      {creating ? (
-        <div className="fex-create">
-          <input
-            className="fex-create-input"
-            autoFocus
-            value={newName}
-            placeholder="文件名，如 note.txt"
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); submitCreate() }
-              else if (e.key === 'Escape') { setCreating(false); setNewName('') }
-            }}
-            disabled={createBusy}
-          />
-          <button className="fex-btn fex-btn-ok" title="创建" onClick={submitCreate} disabled={createBusy || newName.trim() === ''}>✓</button>
-          <button className="fex-btn" title="取消" onClick={() => { setCreating(false); setNewName('') }}>✗</button>
+    <>
+      {!open ? (
+        <button className="fex-toggle" onClick={() => setOpen(true)} title="文件树" aria-label="文件树">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M2 3h4l1.5 2H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 0-1z"/></svg>
+        </button>
+      ) : (
+        <div className="fex-panel">
+          <div className="fex-head">
+            <span>文件</span>
+            <span className="fex-head-actions">
+              <button className="fex-btn" onClick={() => { setCreating(v => !v); setNewName('') }} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
+              <button className="fex-close" onClick={() => setOpen(false)}>×</button>
+            </span>
+          </div>
+          {creating ? (
+            <div className="fex-create">
+              <input
+                className="fex-create-input"
+                autoFocus
+                value={newName}
+                placeholder="文件名，如 note.txt"
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitCreate() }
+                  else if (e.key === 'Escape') { setCreating(false); setNewName('') }
+                }}
+                disabled={createBusy}
+              />
+              <button className="fex-btn fex-btn-ok" title="创建" onClick={submitCreate} disabled={createBusy || newName.trim() === ''}>✓</button>
+              <button className="fex-btn" title="取消" onClick={() => { setCreating(false); setNewName('') }}>✗</button>
+            </div>
+          ) : null}
+          {error ? <div className="fex-error">{error}</div> : null}
+          {notice ? <div className="fex-notice">{notice}</div> : null}
+          <div className="fex-tree">
+            {state.root ? renderDir(state.root, 0) : <div className="fex-empty">无工作区</div>}
+          </div>
         </div>
-      ) : null}
-      {error ? <div className="fex-error">{error}</div> : null}
-      {notice ? <div className="fex-notice">{notice}</div> : null}
-      <div className="fex-tree">
-        {state.root ? renderDir(state.root, 0) : <div className="fex-empty">无工作区</div>}
-      </div>
-    </div>
+      )}
+      {/* Delete confirmation: DSH Modal (ui-primitives), Escape/mask close,
+          footer Cancel / Delete. Replaces the native window.confirm. */}
+      <Modal
+        open={confirmTarget !== null}
+        title="删除文件"
+        description={confirmTarget !== null ? confirmTarget.path : ''}
+        closeLabel="关闭"
+        onClose={cancelDelete}
+        footer={(
+          <>
+            <Button variant="outline" onClick={cancelDelete}>取消</Button>
+            <Button variant="primary" autoFocus onClick={confirmDelete}>删除</Button>
+          </>
+        )}
+      >
+        <div className="fex-confirm-warning">
+          <IconWarningOutline16 size={18} className="fex-confirm-warning-icon" />
+          <p>确定删除「{confirmTarget?.name}」？此操作不可撤销。</p>
+        </div>
+      </Modal>
+    </>
   )
 }

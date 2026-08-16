@@ -1,7 +1,7 @@
 {
   "name": "@cxzrdxy/dsh-file-explorer",
-  "version": "0.3.0",
-  "description": "DeepSeek Harness plugin: an in-workspace file tree, a peer view tab that previews text and image files, drag-to-composer file paths, and create/delete file operations.",
+  "version": "0.3.1",
+  "description": "DeepSeek Harness plugin: an in-workspace file tree, a peer view tab that previews text and image files, drag-to-composer file paths, and create/delete file operations with a DSH-native confirmation dialog.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -38,6 +38,7 @@
     "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2.0",
     "@deepseek-ai/dsh-client-ui-layout": ">=0.0.1-rc.1 <0.2.0",
     "@deepseek-ai/dsh-client-ui-conversation": ">=0.0.1-rc.1 <0.2.0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.0.1-rc.1 <0.2.0",
     "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc.1 <0.2.0",
     "@deepseek-ai/dsh-host-webserver": ">=0.0.1-rc.1 <0.2.0",
     "react": "^18.2.0"

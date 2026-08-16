@@ -56,6 +56,9 @@ const CSS = `
 .fex-row:hover .fex-del{opacity:1}
 .fex-del:hover{background:#fdecea}
 .fex-del:disabled{opacity:.4;cursor:default}
+.fex-confirm-warning{display:flex;align-items:flex-start;gap:10px;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:22px}
+.fex-confirm-warning p{margin:0}
+.fex-confirm-warning-icon{flex:none;margin-top:2px;color:var(--dsw-alias-state-error-primary)}
 .fex-error{padding:8px 12px;background:#fdecea;color:#b3261e;font-size:11px;flex:none}
 .fex-notice{padding:8px 12px;background:#e8f0fe;color:#1a56db;font-size:11px;line-height:1.4;flex:none}
 .fex-tree{flex:1;min-height:0;overflow:auto;padding:4px 0;border-bottom:1px solid #eee;font-size:12px;color:#26231f}
