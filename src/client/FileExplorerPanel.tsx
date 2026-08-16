@@ -1,9 +1,10 @@
 /**
  * File tree + preview panel, mounted by index.ts into the shell.overlay layer.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { filePreviewStore } from './filePreviewStore.ts'
+import { FILE_PATH_MIME } from './FileDropZone.tsx'
 
 const API = '/_dsh/file-explorer/api'
 
@@ -119,19 +120,29 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     noticeTimer.current = window.setTimeout(() => { setNotice(null) }, 5000)
   }, [])
 
+  // Drag out of the tree: the absolute path rides a plugin-private MIME plus
+  // a text/plain fallback, so FileDropZone (composer drop target) and any
+  // future consumer can pick the path up. `copy` effect: dropping never
+  // moves or removes anything from the tree.
+  const onDragStart = useCallback((e: DragEvent, path: string): void => {
+    e.dataTransfer.setData(FILE_PATH_MIME, path)
+    e.dataTransfer.setData('text/plain', path)
+    e.dataTransfer.effectAllowed = 'copy'
+  }, [])
+
   const renderDir = (path: string, depth: number): ReactNode => {
     const kids = state.children.get(path)
     const expanded = state.expanded.has(path)
     return (
       <div key={path}>
-        <div className="fex-row" style={{ paddingLeft: 8 + depth * 14 }} onClick={() => toggle(path)}>
+        <div className="fex-row" style={{ paddingLeft: 8 + depth * 14 }} draggable onClick={() => toggle(path)} onDragStart={(e) => onDragStart(e, path)}>
           <span className="fex-chevron">{expanded ? '▾' : '▸'}</span>
           <span className="fex-name">{base(path)}</span>
         </div>
         {expanded && kids !== undefined
           ? kids.map(k => k.kind === 'dir'
               ? renderDir(k.path, depth + 1)
-              : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} onClick={() => openFile(k)}>
+              : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} draggable onClick={() => openFile(k)} onDragStart={(e) => onDragStart(e, k.path)}>
                   <span className="fex-chevron"> </span>
                   <span className="fex-name">{k.name}</span>
                   <span className="fex-size">{fmt(k.size)}</span>

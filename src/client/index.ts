@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { FileExplorerPanel } from './FileExplorerPanel.tsx'
 import { FilePreviewView } from './FilePreviewView.tsx'
+import { FileDropZone } from './FileDropZone.tsx'
 
 export const inject = ['slots']
 
@@ -28,6 +29,14 @@ export function apply(ctx: ClientContext): void {
     label: () => '预览',
     inject: () => ({}),
   }, FilePreviewView))
+  // Composer drop target: drag a file-tree node over the message box to
+  // insert its path into the draft (conversation.input.overlay, session scope).
+  ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
+    name: 'conversation.input.overlay',
+    id: 'file-drop',
+    order: 100,
+    inject: () => ({}),
+  }, FileDropZone))
 }
 
 const CSS = `
@@ -52,6 +61,7 @@ const CSS = `
 .fex-view-code{margin:0;padding:14px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all}
 .fex-view-img{display:block;max-width:100%;margin:0 auto}
 .fex-view-empty{padding:32px;text-align:center;color:#aaa;font-size:13px}
+.fex-drop-hint{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:200;max-width:80vw;padding:8px 16px;border-radius:999px;background:#26231f;color:#fff;font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none}
 `
 
 function installStyles(): () => void {
