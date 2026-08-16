@@ -44,6 +44,18 @@ const CSS = `
 .fex-panel{position:fixed;right:14px;bottom:64px;z-index:110;width:340px;height:min(520px,70vh);display:flex;flex-direction:column;border:1px solid #dedbd5;border-radius:14px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.18);overflow:hidden}
 .fex-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;font-weight:650;font-size:13px;border-bottom:1px solid #eee;flex:none}
 .fex-close{border:0;background:none;font-size:18px;cursor:pointer;color:#999;line-height:1}
+.fex-head-actions{display:flex;align-items:center;gap:2px}
+.fex-btn{border:0;background:none;cursor:pointer;color:#666;font-size:15px;line-height:1;padding:2px 6px;border-radius:6px}
+.fex-btn:hover{background:#f0ede6;color:#26231f}
+.fex-btn:disabled{opacity:.4;cursor:default}
+.fex-btn-ok{color:#1a7f37}
+.fex-create{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eee;flex:none}
+.fex-create-input{flex:1;min-width:0;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff;color:#26231f}
+.fex-create-input:focus{border-color:#8ab4f8}
+.fex-del{flex:none;border:0;background:none;cursor:pointer;color:#b3261e;font-size:12px;line-height:1;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s}
+.fex-row:hover .fex-del{opacity:1}
+.fex-del:hover{background:#fdecea}
+.fex-del:disabled{opacity:.4;cursor:default}
 .fex-error{padding:8px 12px;background:#fdecea;color:#b3261e;font-size:11px;flex:none}
 .fex-notice{padding:8px 12px;background:#e8f0fe;color:#1a56db;font-size:11px;line-height:1.4;flex:none}
 .fex-tree{flex:1;min-height:0;overflow:auto;padding:4px 0;border-bottom:1px solid #eee;font-size:12px;color:#26231f}

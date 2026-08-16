@@ -1,5 +1,10 @@
 /**
  * File tree + preview panel, mounted by index.ts into the shell.overlay layer.
+ *
+ * v0.3 adds mutations: the header "+" opens an inline new-file form (POST
+ * create into the tree root) and every file row exposes a hover delete
+ * button (POST delete with a confirm dialog). Both refresh the affected
+ * directory listing in place.
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -10,10 +15,26 @@ const API = '/_dsh/file-explorer/api'
 
 type Entry = { name: string; path: string; kind: 'dir' | 'file'; size: number; preview: 'text' | 'image' | 'none' }
 type Listing = { path: string; entries: Entry[]; truncated: boolean }
+type ApiBody<T> = { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
 
 async function api<T>(action: string, path: string): Promise<T> {
   const res = await fetch(`${API}?action=${encodeURIComponent(action)}&path=${encodeURIComponent(path)}`, { credentials: 'same-origin' })
-  const body = await res.json() as { ok: true; value: T } | { ok: false; error: { code: string; message: string } }
+  const body = await res.json() as ApiBody<T>
+  if (!res.ok || !body.ok) {
+    const f = body as { ok: false; error: { code: string; message: string } }
+    throw new Error(f.error?.message ?? `file API failed with HTTP ${res.status}`)
+  }
+  return (body as { ok: true; value: T }).value
+}
+
+async function apiMut<T>(action: string, payload: Record<string, string>): Promise<T> {
+  const res = await fetch(API, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload }),
+  })
+  const body = await res.json() as ApiBody<T>
   if (!res.ok || !body.ok) {
     const f = body as { ok: false; error: { code: string; message: string } }
     throw new Error(f.error?.message ?? `file API failed with HTTP ${res.status}`)
@@ -46,6 +67,18 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | null>(null)
+  // New-file form: 'creating' shows the inline row, 'newName' its input.
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [createBusy, setCreateBusy] = useState(false)
+  // Deletion in flight: the row's button shows "…" and is disabled.
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  const showNotice = useCallback((text: string): void => {
+    setNotice(text)
+    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => { setNotice(null) }, 4000)
+  }, [])
 
   // The tree root follows the CURRENT session's cwd so switching workspaces
   // re-points the tree immediately. Fall back to the workspace registry's
@@ -100,6 +133,16 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     }
   }, [state.children])
 
+  // Re-fetch one directory's listing and swap it into the cache. Used after
+  // create/delete so the tree reflects the mutation immediately.
+  const refresh = useCallback((path: string): void => {
+    void api<Listing>('list', path).then((list) => {
+      setState(s => ({ ...s, children: new Map(s.children).set(path, list.entries) }))
+    }).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e))
+    })
+  }, [])
+
   const toggle = useCallback((path: string): void => {
     setState(s => {
       if (s.expanded.has(path)) {
@@ -115,10 +158,42 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const openFile = useCallback((entry: Entry): void => {
     // Publish to the preview view tab (conversation.view); no in-panel preview.
     filePreviewStore.set({ path: entry.path, name: entry.name })
-    setNotice(`已打开「${entry.name}」，请点击对话区顶部的「预览」页签查看`)
-    if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current)
-    noticeTimer.current = window.setTimeout(() => { setNotice(null) }, 5000)
-  }, [])
+    showNotice(`已打开「${entry.name}」，请点击对话区顶部的「预览」页签查看`)
+  }, [showNotice])
+
+  // Create a new file in the tree root through the mutating API.
+  const submitCreate = useCallback((): void => {
+    const name = newName.trim()
+    if (name === '' || state.root === '') return
+    setCreateBusy(true)
+    void apiMut<{ path: string; name: string }>('create', { parent: state.root, name }).then(() => {
+      setCreating(false)
+      setNewName('')
+      showNotice(`已创建「${name}」`)
+      refresh(state.root)
+    }).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e))
+    }).finally(() => {
+      setCreateBusy(false)
+    })
+  }, [newName, state.root, refresh, showNotice])
+
+  // Delete one file through the mutating API (server refuses non-empty
+  // directories). Clears the preview tab when it shows the deleted file.
+  const removeFile = useCallback((entry: Entry): void => {
+    if (!window.confirm(`确定删除「${entry.name}」？此操作不可撤销。`)) return
+    setDeleting(entry.path)
+    void apiMut<{ path: string; parent: string }>('delete', { path: entry.path }).then((res) => {
+      const preview = filePreviewStore.get()
+      if (preview !== null && preview.path === entry.path) filePreviewStore.set(null)
+      showNotice(`已删除「${entry.name}」`)
+      refresh(res.parent)
+    }).catch((e) => {
+      setError(e instanceof Error ? e.message : String(e))
+    }).finally(() => {
+      setDeleting(null)
+    })
+  }, [refresh, showNotice])
 
   // Drag out of the tree: the absolute path rides a plugin-private MIME plus
   // a text/plain fallback, so FileDropZone (composer drop target) and any
@@ -146,6 +221,13 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
                   <span className="fex-chevron"> </span>
                   <span className="fex-name">{k.name}</span>
                   <span className="fex-size">{fmt(k.size)}</span>
+                  <button
+                    className="fex-del"
+                    title="删除"
+                    aria-label={`删除 ${k.name}`}
+                    disabled={deleting === k.path}
+                    onClick={(e) => { e.stopPropagation(); removeFile(k) }}
+                  >{deleting === k.path ? '…' : '🗑'}</button>
                 </div>)
           : null}
       </div>
@@ -161,7 +243,31 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   }
   return (
     <div className="fex-panel">
-      <div className="fex-head"><span>文件</span><button className="fex-close" onClick={() => setOpen(false)}>×</button></div>
+      <div className="fex-head">
+        <span>文件</span>
+        <span className="fex-head-actions">
+          <button className="fex-btn" onClick={() => { setCreating(v => !v); setNewName('') }} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
+          <button className="fex-close" onClick={() => setOpen(false)}>×</button>
+        </span>
+      </div>
+      {creating ? (
+        <div className="fex-create">
+          <input
+            className="fex-create-input"
+            autoFocus
+            value={newName}
+            placeholder="文件名，如 note.txt"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); submitCreate() }
+              else if (e.key === 'Escape') { setCreating(false); setNewName('') }
+            }}
+            disabled={createBusy}
+          />
+          <button className="fex-btn fex-btn-ok" title="创建" onClick={submitCreate} disabled={createBusy || newName.trim() === ''}>✓</button>
+          <button className="fex-btn" title="取消" onClick={() => { setCreating(false); setNewName('') }}>✗</button>
+        </div>
+      ) : null}
       {error ? <div className="fex-error">{error}</div> : null}
       {notice ? <div className="fex-notice">{notice}</div> : null}
       <div className="fex-tree">

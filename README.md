@@ -2,7 +2,7 @@
 
 > 给 **DeepSeek Harness** 的纯文本 Agent 装上一个「文件浏览器」。
 > 一个右下角的浮动文件树，加一个与「对话」「轨迹」**平级**的预览页签——浏览工作区目录、预览文本和图片，
-> 还能**把文件直接拖进消息框**（自动插入文件路径），无需切出对话。
+> 还能**把文件直接拖进消息框**（自动插入文件路径），并支持**新建文件**与**删除文件**，无需切出对话。
 
 <p align="center">
   <img src="assets/file-explorer.png" alt="dsh-file-explorer 截图" width="80%">
@@ -16,8 +16,10 @@
 - 🗂️ **平级预览页签** — 点文件后，切到对话区顶部的「预览」页签(与「对话」「轨迹」并排)查看内容，不打断对话流
 - 🎯 **拖拽进消息框** — 把文件树里的文件(或目录)直接拖到消息输入框，松开即插入该文件的绝对路径，
   Agent 收到后可直接用 `read` 等工具读取，不用手动敲路径
+- ➕ **新建文件** — 面板头部「＋」按钮，在文件树根目录(当前工作区)内联输入文件名即可创建空文件
+- 🗑️ **删除文件** — 悬停文件行出现删除按钮，确认后删除；服务端只允许删文件或**空目录**，防误删
 - 🔄 **实时跟随工作区** — 文件树根路径跟随当前会话的 `cwd`，切换工作区立即刷新
-- 🔒 **只读、安全** — 同源校验 + 路径规范化 + 条目/字节上限，不做写操作
+- 🔒 **安全** — 同源校验 + 路径规范化 + 条目/字节上限；删除操作拒绝非空目录与文件系统根路径，新建拒绝重名覆盖(409)
 
 ## 🚀 快速开始
 
@@ -40,6 +42,8 @@ dsh plugin --profile web add file:.
 2. 点某个文件 → 弹出提示「已打开「文件名」」
 3. 点对话区顶部页签栏的「**预览**」→ 查看内容
 4. 或直接把文件树里的文件**拖到消息输入框** → 松开后文件路径自动插入消息文本，发送即可让 Agent 读取
+5. 点面板头部「**＋**」→ 输入文件名回车 → 在工作区根目录新建文件
+6. 悬停某个文件行 → 点「🗑」→ 确认后删除该文件
 
 ## 📦 可预览的文件类型
 
@@ -57,8 +61,8 @@ dsh plugin --profile web add file:.
 
 | 半 | 文件 | 作用 |
 |---|---|---|
-| node half | `lib/index.js` / `src/index.ts` | 同源文件 API(`list`/`read`/`workspace`)+ HTTP 路由 `/_dsh/file-explorer/api` |
-| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`)+ 预览页签(`conversation.view`)+ 消息框拖放目标(`conversation.input.overlay`) |
+| node half | `lib/index.js` / `src/index.ts` | 同源文件 API(`list`/`read`/`workspace` GET，`create`/`delete` POST)+ HTTP 路由 `/_dsh/file-explorer/api` |
+| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`，含新建/删除 UI)+ 预览页签(`conversation.view`)+ 消息框拖放目标(`conversation.input.overlay`) |
 
 文件树与预览页签通过 `src/client/filePreviewStore.ts` 模块级单例共享「当前预览文件」；
 拖放目标 `src/client/FileDropZone.tsx` 经 ui-conversation 标准套件提供的 `inputActions.setDraft`
@@ -76,7 +80,9 @@ dsh plugin --profile web add file:.
 
 - 预览页签需**手动切换**(点文件后点「预览」页签)。自动跳转需要访问 `ui-conversation` 内部的 view store，当前 DSH 架构未对外暴露该能力
 - 拖拽进消息框**仅支持从文件树节点拖出**(浏览器拿不到 OS 文件管理器中文件的绝对路径，`File` 对象不含 path)
-- 只读(无编辑保存)
+- 新建文件仅落在**树根目录**(当前工作区)，暂不支持在子目录内新建
+- 删除仅限文件与**空目录**；有内容的目录会收到「directory not empty」提示(设计如此，防止误删)
+- 无编辑保存(编辑为后续迭代)
 
 ## 📄 License
 

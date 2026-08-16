@@ -1,12 +1,16 @@
-﻿/**
+/**
  * File explorer backend (host half): a same-origin HTTP route
  * (`/_dsh/file-explorer/api`) serving directory listings and file reads for
- * the browser half. Read-only in this version; editing lands in a later
- * iteration. The route attaches only when a `webServer` service exists.
+ * the browser half. Read-only GET actions: `workspace`, `list`, `read`.
+ * Mutating POST actions (JSON body): `create` (a new file inside a
+ * directory, never overwrites) and `delete` (files, or empty directories
+ * only — non-empty directories and filesystem roots are refused so
+ * deletions stay bounded). The route attaches only when a `webServer`
+ * service exists.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { join, normalize, resolve, sep } from 'node:path'
+import { readdir, readFile, stat, writeFile, unlink, rmdir } from 'node:fs/promises'
+import { dirname, join, normalize, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only import activates the optional webServer Context declaration.
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -19,6 +23,7 @@ export const FILE_API_ROUTE = '/_dsh/file-explorer/api'
 const MAX_ENTRIES = 500
 const MAX_TEXT_BYTES = 512 * 1024
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
+const MAX_BODY_BYTES = 1024 * 1024
 
 const TEXT_EXTS = new Set(['', '.txt', '.md', '.markdown', '.json', '.js', '.ts', '.tsx', '.jsx', '.css', '.html', '.htm', '.yml', '.yaml', '.xml', '.csv', '.log', '.py', '.c', '.cpp', '.h', '.cs', '.java', '.go', '.rs', '.sh', '.ps1', '.sql', '.ini', '.cfg', '.toml', '.bat', '.cmd'])
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico'])
@@ -110,10 +115,69 @@ async function readTarget(path: string): Promise<unknown> {
   return { path, kind: 'binary', size: st.size }
 }
 
+/**
+ * A new file name must survive Windows and POSIX semantics: no path
+ * separators, no reserved characters, no control bytes, no trailing dot or
+ * space (Windows trims them), and no '.' / '..'.
+ */
+function validName(name: string): boolean {
+  if (name.length === 0 || name === '.' || name === '..') return false
+  if (/[\\/]/.test(name)) return false
+  if (/[<>:"|?*\u0000-\u001f]/.test(name)) return false
+  if (/[. ]$/.test(name)) return false
+  return true
+}
+
+function codeError(message: string, code: string): Error & { code: string } {
+  return Object.assign(new Error(message), { code })
+}
+
+/** Create a new file inside `parent`; `flag: 'wx'` refuses to overwrite. */
+async function createFile(parent: string, name: string, content: string): Promise<unknown> {
+  if (!validName(name)) throw codeError('invalid file name', 'EINVAL')
+  const target = join(parent, name)
+  await writeFile(target, content, { flag: 'wx' })
+  return { path: target, name }
+}
+
+/** Delete a file, or an empty directory; refuse filesystem roots. */
+async function deleteTarget(path: string): Promise<unknown> {
+  const resolved = resolve(path)
+  // dirname(C:\) === C:\ (and / on POSIX): a root has no parent to remove into.
+  if (dirname(resolved) === resolved) throw codeError('refusing to delete a filesystem root', 'EROOT')
+  const st = await stat(resolved)
+  if (st.isDirectory()) {
+    const kids = await readdir(resolved)
+    if (kids.length > 0) throw codeError(`directory not empty (${kids.length} entries)`, 'ENOTEMPTY')
+    await rmdir(resolved)
+  } else {
+    await unlink(resolved)
+  }
+  return { path: resolved, parent: dirname(resolved) }
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((fulfil, reject) => {
+    let size = 0
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        reject(codeError('request body too large', 'ETOOBIG'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => fulfil(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET')
-    err(res, 405, 'method-not-allowed', 'Use GET')
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.setHeader('Allow', 'GET, POST')
+    err(res, 405, 'method-not-allowed', 'Use GET or POST')
     return
   }
   if (!sameOrigin(req)) {
@@ -127,28 +191,65 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     err(res, 400, 'bad-url', 'Malformed request URL')
     return
   }
-  const action = url.searchParams.get('action')
-  const rawPath = url.searchParams.get('path')
   try {
-    // `workspace` takes no path: answer before any path cleanup so an empty
-    // or absent `path` query (the browser half always sends `path=`) never
-    // trips the "empty path" fence.
-    if (action === 'workspace') {
-      json(res, 200, { ok: true, value: { path: process.cwd() } })
+    if (req.method === 'GET') {
+      // Read-only actions. `workspace` takes no path: answer before any path
+      // cleanup so an empty or absent `path` query (the browser half always
+      // sends `path=`) never trips the "empty path" fence.
+      const action = url.searchParams.get('action')
+      const rawPath = url.searchParams.get('path')
+      if (action === 'workspace') {
+        json(res, 200, { ok: true, value: { path: process.cwd() } })
+        return
+      }
+      const path = rawPath === null || rawPath === undefined ? '' : cleanPath(rawPath)
+      if (action === 'list') {
+        json(res, 200, { ok: true, value: await listDirectory(path) })
+        return
+      }
+      if (action === 'read') {
+        json(res, 200, { ok: true, value: await readTarget(path) })
+        return
+      }
+      err(res, 400, 'bad-action', 'GET action must be list or read')
       return
     }
-    const path = rawPath === null || rawPath === undefined ? '' : cleanPath(rawPath)
-    if (action === 'list') {
-      json(res, 200, { ok: true, value: await listDirectory(path) })
+    // Mutating actions ride POST with a JSON body: { action, ... }.
+    let body: unknown
+    try {
+      body = JSON.parse(await readBody(req))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ETOOBIG') {
+        err(res, 413, 'body-too-large', 'Request body too large')
+        return
+      }
+      err(res, 400, 'bad-json', 'Request body must be valid JSON')
       return
     }
-    if (action === 'read') {
-      json(res, 200, { ok: true, value: await readTarget(path) })
+    const payload = (body ?? {}) as Record<string, unknown>
+    const action = typeof payload.action === 'string' ? payload.action : ''
+    if (action === 'create') {
+      const parent = typeof payload.parent === 'string' ? cleanPath(payload.parent) : ''
+      const name = typeof payload.name === 'string' ? payload.name.trim() : ''
+      const content = typeof payload.content === 'string' ? payload.content : ''
+      json(res, 200, { ok: true, value: await createFile(parent, name, content) })
       return
     }
-    err(res, 400, 'bad-action', 'action must be list or read')
+    if (action === 'delete') {
+      const path = typeof payload.path === 'string' ? cleanPath(payload.path) : ''
+      json(res, 200, { ok: true, value: await deleteTarget(path) })
+      return
+    }
+    err(res, 400, 'bad-action', 'POST action must be create or delete')
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const e = error as NodeJS.ErrnoException
+    const message = e.message || String(error)
+    if (e.code === 'EEXIST') { err(res, 409, 'exists', message); return }
+    if (e.code === 'ENOENT') { err(res, 404, 'not-found', message); return }
+    if (e.code === 'EINVAL' || e.code === 'EROOT' || e.code === 'ENOTEMPTY' || e.code === 'EISDIR' || e.code === 'EPERM' || e.code === 'EACCES') {
+      err(res, 400, String(e.code).toLowerCase(), message)
+      return
+    }
     err(res, 400, 'fs-error', message)
   }
 }
@@ -163,6 +264,6 @@ export function apply(ctx: Context): void {
         handler: (req, res) => handle(req, res),
       })
       return () => { dispose() }
-    }, 'file-explorer: file API route')
+    }, 'host-file-explorer: file API route')
   })
 }
