@@ -1,7 +1,8 @@
 # 📂 dsh-file-explorer
 
 > 给 **DeepSeek Harness** 的纯文本 Agent 装上一个「文件浏览器」。
-> 一个右下角的浮动文件树，加一个与「对话」「轨迹」**平级**的预览页签——浏览工作区目录、预览文本和图片，无需切出对话。
+> 一个右下角的浮动文件树，加一个与「对话」「轨迹」**平级**的预览页签——浏览工作区目录、预览文本和图片，
+> 还能**把文件直接拖进消息框**（自动插入文件路径），无需切出对话。
 
 <p align="center">
   <img src="assets/file-explorer.png" alt="dsh-file-explorer 截图" width="80%">
@@ -13,6 +14,8 @@
 
 - 📁 **浮动文件树** — 右下角一个按钮，点开即浏览当前工作区的目录树，可逐层展开
 - 🗂️ **平级预览页签** — 点文件后，切到对话区顶部的「预览」页签(与「对话」「轨迹」并排)查看内容，不打断对话流
+- 🎯 **拖拽进消息框** — 把文件树里的文件(或目录)直接拖到消息输入框，松开即插入该文件的绝对路径，
+  Agent 收到后可直接用 `read` 等工具读取，不用手动敲路径
 - 🔄 **实时跟随工作区** — 文件树根路径跟随当前会话的 `cwd`，切换工作区立即刷新
 - 🔒 **只读、安全** — 同源校验 + 路径规范化 + 条目/字节上限，不做写操作
 
@@ -31,11 +34,12 @@ dsh plugin --profile web add file:.
 
 重启 Web profile 即可。包内已提交编译好的 `lib/`，从 checkout 安装不需要消费端构建。
 
-**使用三步**：
+**使用**：
 
 1. 点右下角 📁 按钮 → 打开文件树
 2. 点某个文件 → 弹出提示「已打开「文件名」」
 3. 点对话区顶部页签栏的「**预览**」→ 查看内容
+4. 或直接把文件树里的文件**拖到消息输入框** → 松开后文件路径自动插入消息文本，发送即可让 Agent 读取
 
 ## 📦 可预览的文件类型
 
@@ -54,9 +58,11 @@ dsh plugin --profile web add file:.
 | 半 | 文件 | 作用 |
 |---|---|---|
 | node half | `lib/index.js` / `src/index.ts` | 同源文件 API(`list`/`read`/`workspace`)+ HTTP 路由 `/_dsh/file-explorer/api` |
-| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`)+ 预览页签(`conversation.view`) |
+| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`)+ 预览页签(`conversation.view`)+ 消息框拖放目标(`conversation.input.overlay`) |
 
-文件树与预览页签通过 `src/client/filePreviewStore.ts` 模块级单例共享「当前预览文件」。
+文件树与预览页签通过 `src/client/filePreviewStore.ts` 模块级单例共享「当前预览文件」；
+拖放目标 `src/client/FileDropZone.tsx` 经 ui-conversation 标准套件提供的 `inputActions.setDraft`
+把拖入的文件路径写入消息草稿(路径经自定义 DataTransfer MIME `application/x-dsh-file-path` 传递)。
 
 ## 🔧 二次开发
 
@@ -69,6 +75,7 @@ dsh plugin --profile web add file:.
 ## ⚠️ 已知限制
 
 - 预览页签需**手动切换**(点文件后点「预览」页签)。自动跳转需要访问 `ui-conversation` 内部的 view store，当前 DSH 架构未对外暴露该能力
+- 拖拽进消息框**仅支持从文件树节点拖出**(浏览器拿不到 OS 文件管理器中文件的绝对路径，`File` 对象不含 path)
 - 只读(无编辑保存)
 
 ## 📄 License

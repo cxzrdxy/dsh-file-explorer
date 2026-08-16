@@ -1,7 +1,7 @@
 {
   "name": "@cxzrdxy/dsh-file-explorer",
-  "version": "0.1.0",
-  "description": "DeepSeek Harness plugin: an in-workspace file tree plus a peer view tab that previews text and image files.",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness plugin: an in-workspace file tree, a peer view tab that previews text and image files, and drag-to-composer file paths.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
