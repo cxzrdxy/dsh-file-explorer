@@ -49,9 +49,13 @@ const CSS = `
 .fex-btn:hover{background:#f0ede6;color:#26231f}
 .fex-btn:disabled{opacity:.4;cursor:default}
 .fex-btn-ok{color:#1a7f37}
-.fex-create{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eee;flex:none}
+.fex-create{display:flex;align-items:center;gap:6px;padding:6px 10px}
 .fex-create-input{flex:1;min-width:0;border:1px solid #ddd;border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:#fff;color:#26231f}
 .fex-create-input:focus{border-color:#8ab4f8}
+.fex-dir-add{flex:none;border:0;background:none;cursor:pointer;color:#666;font-size:13px;line-height:1;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s}
+.fex-row:hover .fex-dir-add{opacity:1}
+.fex-dir-add:hover{background:#f0ede6;color:#1a7f37}
+.fex-dir-add:disabled{opacity:.4;cursor:default}
 .fex-del{flex:none;border:0;background:none;cursor:pointer;color:#b3261e;font-size:12px;line-height:1;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s}
 .fex-row:hover .fex-del{opacity:1}
 .fex-del:hover{background:#fdecea}

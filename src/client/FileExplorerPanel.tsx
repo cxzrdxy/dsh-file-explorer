@@ -68,8 +68,10 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | null>(null)
-  // New-file form: 'creating' shows the inline row, 'newName' its input.
-  const [creating, setCreating] = useState(false)
+  // New-file form: 'createIn' is the directory the inline form is attached
+  // to (null = closed; the form renders at the top of that dir's children),
+  // 'newName' its input.
+  const [createIn, setCreateIn] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [createBusy, setCreateBusy] = useState(false)
   // Deletion in flight: the row's button shows "…" and is disabled.
@@ -150,13 +152,15 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     setState(s => {
       if (s.expanded.has(path)) {
         const e = new Set(s.expanded); e.delete(path)
+        // Collapsing the directory that hosts the create form closes the form.
+        if (createIn === path) setCreateIn(null)
         return { ...s, expanded: e }
       }
       const e = new Set(s.expanded); e.add(path)
       void ensure(path)
       return { ...s, expanded: e }
     })
-  }, [ensure])
+  }, [ensure, createIn])
 
   const openFile = useCallback((entry: Entry): void => {
     // Publish to the preview view tab (conversation.view); no in-panel preview.
@@ -164,22 +168,46 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     showNotice(`已打开「${entry.name}」，请点击对话区顶部的「预览」页签查看`)
   }, [showNotice])
 
-  // Create a new file in the tree root through the mutating API.
+  // Header "+" targets the tree root (toggle open/close).
+  const toggleRootCreate = useCallback((): void => {
+    setCreateIn(v => (v === state.root ? null : state.root))
+    setNewName('')
+  }, [state.root])
+
+  // A directory row's "+" opens the create form inside that directory: expand
+  // it first, then load its children so the form row has a place to render.
+  const addInDir = useCallback((path: string): void => {
+    setCreateIn(path)
+    setNewName('')
+    setState(s => {
+      const e = new Set(s.expanded); e.add(path)
+      return { ...s, expanded: e }
+    })
+    void ensure(path)
+  }, [ensure])
+
+  const cancelCreate = useCallback((): void => {
+    setCreateIn(null)
+    setNewName('')
+  }, [])
+
+  // Create a new file in `createIn` through the mutating API.
   const submitCreate = useCallback((): void => {
     const name = newName.trim()
-    if (name === '' || state.root === '') return
+    const parent = createIn
+    if (name === '' || parent === null) return
     setCreateBusy(true)
-    void apiMut<{ path: string; name: string }>('create', { parent: state.root, name }).then(() => {
-      setCreating(false)
+    void apiMut<{ path: string; name: string }>('create', { parent, name }).then(() => {
+      setCreateIn(null)
       setNewName('')
       showNotice(`已创建「${name}」`)
-      refresh(state.root)
+      refresh(parent)
     }).catch((e) => {
       setError(e instanceof Error ? e.message : String(e))
     }).finally(() => {
       setCreateBusy(false)
     })
-  }, [newName, state.root, refresh, showNotice])
+  }, [newName, createIn, refresh, showNotice])
 
   // Open the custom confirmation dialog for one file (replaces window.confirm).
   const askDelete = useCallback((entry: Entry): void => {
@@ -228,22 +256,50 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
         <div className="fex-row" style={{ paddingLeft: 8 + depth * 14 }} draggable onClick={() => toggle(path)} onDragStart={(e) => onDragStart(e, path)}>
           <span className="fex-chevron">{expanded ? '▾' : '▸'}</span>
           <span className="fex-name">{base(path)}</span>
+          <button
+            className="fex-dir-add"
+            title="新建文件"
+            aria-label={`在 ${base(path)} 新建文件`}
+            onClick={(e) => { e.stopPropagation(); addInDir(path) }}
+          >＋</button>
         </div>
         {expanded && kids !== undefined
-          ? kids.map(k => k.kind === 'dir'
-              ? renderDir(k.path, depth + 1)
-              : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} draggable onClick={() => openFile(k)} onDragStart={(e) => onDragStart(e, k.path)}>
-                  <span className="fex-chevron"> </span>
-                  <span className="fex-name">{k.name}</span>
-                  <span className="fex-size">{fmt(k.size)}</span>
-                  <button
-                    className="fex-del"
-                    title="删除"
-                    aria-label={`删除 ${k.name}`}
-                    disabled={deleting === k.path}
-                    onClick={(e) => { e.stopPropagation(); askDelete(k) }}
-                  >{deleting === k.path ? '…' : '🗑'}</button>
-                </div>)
+          ? [
+              createIn === path
+                ? (
+                  <div className="fex-create" key="fex-create" style={{ paddingLeft: 8 + (depth + 1) * 14 }}>
+                    <input
+                      className="fex-create-input"
+                      autoFocus
+                      value={newName}
+                      placeholder="文件名，如 note.txt"
+                      onChange={(e) => setNewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); submitCreate() }
+                        else if (e.key === 'Escape') { cancelCreate() }
+                      }}
+                      disabled={createBusy}
+                    />
+                    <button className="fex-btn fex-btn-ok" title="创建" onClick={submitCreate} disabled={createBusy || newName.trim() === ''}>✓</button>
+                    <button className="fex-btn" title="取消" onClick={cancelCreate}>✗</button>
+                  </div>
+                )
+                : null,
+              ...kids.map(k => k.kind === 'dir'
+                ? renderDir(k.path, depth + 1)
+                : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} draggable onClick={() => openFile(k)} onDragStart={(e) => onDragStart(e, k.path)}>
+                    <span className="fex-chevron"> </span>
+                    <span className="fex-name">{k.name}</span>
+                    <span className="fex-size">{fmt(k.size)}</span>
+                    <button
+                      className="fex-del"
+                      title="删除"
+                      aria-label={`删除 ${k.name}`}
+                      disabled={deleting === k.path}
+                      onClick={(e) => { e.stopPropagation(); askDelete(k) }}
+                    >{deleting === k.path ? '…' : '🗑'}</button>
+                  </div>),
+            ]
           : null}
       </div>
     )
@@ -260,28 +316,10 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
           <div className="fex-head">
             <span>文件</span>
             <span className="fex-head-actions">
-              <button className="fex-btn" onClick={() => { setCreating(v => !v); setNewName('') }} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
+              <button className="fex-btn" onClick={toggleRootCreate} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
               <button className="fex-close" onClick={() => setOpen(false)}>×</button>
             </span>
           </div>
-          {creating ? (
-            <div className="fex-create">
-              <input
-                className="fex-create-input"
-                autoFocus
-                value={newName}
-                placeholder="文件名，如 note.txt"
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); submitCreate() }
-                  else if (e.key === 'Escape') { setCreating(false); setNewName('') }
-                }}
-                disabled={createBusy}
-              />
-              <button className="fex-btn fex-btn-ok" title="创建" onClick={submitCreate} disabled={createBusy || newName.trim() === ''}>✓</button>
-              <button className="fex-btn" title="取消" onClick={() => { setCreating(false); setNewName('') }}>✗</button>
-            </div>
-          ) : null}
           {error ? <div className="fex-error">{error}</div> : null}
           {notice ? <div className="fex-notice">{notice}</div> : null}
           <div className="fex-tree">
