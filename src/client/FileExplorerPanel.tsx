@@ -64,6 +64,10 @@ type PanelProps = PropsRuntime<'shell.overlay'>
 
 export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
   const [open, setOpen] = useState(false)
+  // 'closing' plays the reverse pop animation (160ms) before unmounting, so
+  // closing is as smooth as opening.
+  const [closing, setClosing] = useState(false)
+  const closeTimer = useRef<number | null>(null)
   const [state, setState] = useState<NodeState>({ root: '', children: new Map(), expanded: new Set() })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -88,6 +92,18 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current)
     noticeTimer.current = window.setTimeout(() => { setNotice(null) }, 4000)
   }, [])
+
+  // Animated close: mark closing, let the CSS reverse animation play, then
+  // unmount the panel (the toggle button fades back in).
+  const closePanel = useCallback((): void => {
+    if (closing) return
+    setClosing(true)
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+    closeTimer.current = window.setTimeout(() => {
+      setOpen(false)
+      setClosing(false)
+    }, 160)
+  }, [closing])
 
   // The tree root follows the CURRENT session's cwd so switching workspaces
   // re-points the tree immediately. Fall back to the workspace registry's
@@ -361,12 +377,12 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M2 3h4l1.5 2H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 0-1z"/></svg>
         </button>
       ) : (
-        <div className="fex-panel">
+        <div className={`fex-panel${closing ? ' fex-panel-closing' : ''}`}>
           <div className="fex-head">
             <span>文件</span>
             <span className="fex-head-actions">
               <button className="fex-btn" onClick={toggleRootCreate} title="新建文件" aria-label="新建文件" disabled={state.root === ''}>＋</button>
-              <button className="fex-close" onClick={() => setOpen(false)}>×</button>
+              <button className="fex-close" onClick={closePanel}>×</button>
             </span>
           </div>
           {error ? <div className="fex-error">{error}</div> : null}
@@ -383,6 +399,7 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
         title="删除文件"
         description={confirmTarget !== null ? confirmTarget.path : ''}
         closeLabel="关闭"
+        className="fex-modal"
         onClose={cancelDelete}
         footer={(
           <>
