@@ -132,6 +132,64 @@ function codeError(message: string, code: string): Error & { code: string } {
   return Object.assign(new Error(message), { code })
 }
 
+/**
+ * Update an existing file with new content. Supports optimistic concurrency
+ * control via expectedSize and expectedMtime parameters.
+ */
+async function updateFile(
+  path: string,
+  content: string,
+  expectedSize?: number,
+  expectedMtime?: string
+): Promise<unknown> {
+  const resolved = resolve(path)
+
+  // Check if file exists
+  let st: import('node:fs').Stats
+  try {
+    st = await stat(resolved)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw codeError('文件不存在', 'ENOENT')
+    }
+    throw error
+  }
+
+  // Check if it's a directory
+  if (st.isDirectory()) {
+    throw codeError('不能编辑目录', 'EISDIR')
+  }
+
+  // Concurrency control: check if file has been modified
+  if (expectedSize !== undefined && st.size !== expectedSize) {
+    throw codeError('文件已被其他进程修改（大小变化）', 'CONFLICT')
+  }
+
+  if (expectedMtime !== undefined) {
+    const currentMtime = st.mtime.toISOString()
+    if (currentMtime !== expectedMtime) {
+      throw codeError('文件已被其他进程修改（时间变化）', 'CONFLICT')
+    }
+  }
+
+  // Check file size limit
+  if (content.length > MAX_TEXT_BYTES) {
+    throw codeError('文件内容过大', 'ETOOBIG')
+  }
+
+  // Write file
+  await writeFile(resolved, content, { encoding: 'utf8' })
+
+  // Get updated file info
+  const newSt = await stat(resolved)
+
+  return {
+    path: resolved,
+    size: newSt.size,
+    mtime: newSt.mtime.toISOString()
+  }
+}
+
 /** Create a new file inside `parent`; `flag: 'wx'` refuses to overwrite. */
 async function createFile(parent: string, name: string, content: string): Promise<unknown> {
   if (!validName(name)) throw codeError('invalid file name', 'EINVAL')
@@ -249,7 +307,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       json(res, 200, { ok: true, value: await deleteTarget(path, recursive) })
       return
     }
-    err(res, 400, 'bad-action', 'POST action must be create or delete')
+    if (action === 'update') {
+      const path = typeof payload.path === 'string' ? cleanPath(payload.path) : ''
+      const content = typeof payload.content === 'string' ? payload.content : ''
+      const expectedSize = typeof payload.expectedSize === 'number' ? payload.expectedSize : undefined
+      const expectedMtime = typeof payload.expectedMtime === 'string' ? payload.expectedMtime : undefined
+      json(res, 200, { ok: true, value: await updateFile(path, content, expectedSize, expectedMtime) })
+      return
+    }
+    err(res, 400, 'bad-action', 'POST action must be create, delete, or update')
   } catch (error) {
     const e = error as NodeJS.ErrnoException
     const message = e.message || String(error)

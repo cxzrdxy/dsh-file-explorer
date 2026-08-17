@@ -8,7 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Type-only import activates ui-conversation's SlotMap merge (the `conversation.view` ring).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { FileExplorerPanel } from './FileExplorerPanel.tsx'
-import { FilePreviewView } from './FilePreviewView.tsx'
+import { FileEditorView } from './FileEditorView.tsx'
 import { FileDropZone } from './FileDropZone.tsx'
 
 export const inject = ['slots']
@@ -21,14 +21,14 @@ export function apply(ctx: ClientContext): void {
     id: 'file-explorer',
     inject: () => ({}),
   }, FileExplorerPanel))
-  // Preview view tab, peer of the chat and trajectory tabs (conversation.view).
+  // Editor view tab, peer of the chat and trajectory tabs (conversation.view).
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',
-    id: 'file-preview',
+    id: 'file-editor',
     order: 20,
-    label: () => '预览',
+    label: () => '预览/编辑',
     inject: () => ({}),
-  }, FilePreviewView))
+  }, FileEditorView))
   // Composer drop target: drag a file-tree node over the message box to
   // insert its path into the draft (conversation.input.overlay, session scope).
   ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
@@ -85,6 +85,25 @@ const CSS = `
 .fex-view-code{margin:0;padding:14px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all}
 .fex-view-img{display:block;max-width:100%;margin:0 auto}
 .fex-view-empty{padding:32px;text-align:center;color:#aaa;font-size:13px}
+.fex-editor-head{flex:none;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;font-weight:650}
+.fex-editor-info{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.fex-editor-name{font-weight:650}
+.fex-editor-path{font-size:11px;font-weight:400;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fex-editor-dirty{color:#d97706;font-size:16px;line-height:1}
+.fex-editor-actions{display:flex;align-items:center;gap:4px;flex:none}
+.fex-editor-toolbar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px;border-bottom:1px solid #eee;background:#faf9f7}
+.fex-editor-settings{display:flex;flex-wrap:wrap;gap:8px;animation:fex-fade-slide-in .18s var(--ds-ease-in-out)}
+.fex-editor-setting{display:flex;align-items:center;gap:4px;font-size:11px;color:#666}
+.fex-editor-setting label{display:flex;align-items:center;gap:4px;cursor:pointer}
+.fex-editor-setting select{border:1px solid #ddd;border-radius:4px;padding:2px 4px;font-size:11px;background:#fff}
+.fex-editor-content{flex:1;display:flex;min-height:0;overflow:hidden;background:#faf9f7}
+.fex-editor-line-numbers{flex:none;width:40px;overflow:hidden;background:#f5f5f5;border-right:1px solid #eee;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;color:#999;text-align:right;padding:14px 8px 14px 0}
+.fex-editor-line-number.active{color:#26231f;font-weight:500}
+.fex-editor-textarea{flex:1;border:none;outline:none;resize:none;padding:14px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.6;color:#26231f;background:transparent}
+.fex-editor-textarea:focus{outline:none}
+.fex-editor-status{flex:none;display:flex;align-items:center;justify-content:space-between;padding:6px 14px;border-top:1px solid #eee;font-size:11px;color:#666;background:#faf9f7}
+.fex-editor-status-left{display:flex;align-items:center;gap:4px}
+.fex-editor-status-right{display:flex;align-items:center;gap:8px}
 .fex-drop-hint{position:fixed;left:50%;bottom:150px;transform:translateX(-50%);z-index:200;max-width:80vw;padding:8px 16px;border-radius:999px;background:#26231f;color:#fff;font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 16px rgba(0,0,0,.25);pointer-events:none;animation:fex-hint-in .15s ease}
 .fex-modal{animation:fex-scale-in .18s var(--ds-ease-in-out)}
 @keyframes fex-pop-in{from{opacity:0;transform:scale(.92) translateY(10px)}to{opacity:1;transform:none}}
