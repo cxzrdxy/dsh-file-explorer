@@ -72,8 +72,8 @@ dsh plugin --profile web add file:.
 
 | 半 | 文件 | 作用 |
 |---|---|---|
-| node half | `lib/index.js` / `src/index.ts` | 同源文件 API(`list`/`read`/`workspace` GET，`create`/`delete` POST)+ HTTP 路由 `/_dsh/file-explorer/api` |
-| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`，含新建/删除 UI)+ 预览页签(`conversation.view`)+ 消息框拖放目标(`conversation.input.overlay`) |
+| node half | `lib/index.js` / `src/index.ts` | 同源文件 API(`list`/`read`/`workspace` GET，`create`/`delete`/`update` POST)+ HTTP 路由 `/_dsh/file-explorer/api` |
+| browser half | `lib/client.js` / `src/client/*` | 文件树(`shell.overlay`，含新建/删除 UI)+ 预览/编辑页签(`conversation.view`)+ 消息框拖放目标(`conversation.input.overlay`) |
 
 文件树与预览页签通过 `src/client/filePreviewStore.ts` 模块级单例共享「当前预览文件」；
 拖放目标 `src/client/FileDropZone.tsx` 经 ui-conversation 标准套件提供的 `inputActions.setDraft`
