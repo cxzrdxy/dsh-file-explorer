@@ -182,11 +182,14 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
     })
   }, [ensure, createIn])
 
-  const openFile = useCallback((entry: Entry): void => {
-    // Publish to the preview view tab (conversation.view); no in-panel preview.
-    filePreviewStore.set({ path: entry.path, name: entry.name })
-    showNotice(`已打开「${entry.name}」，请点击对话区顶部的「预览」页签查看`)
-  }, [showNotice])
+  const openFile = useCallback((entry: Entry, edit = false): void => {
+    // Publish to the preview view tab (conversation.view); FileViewActivator
+    // switches the active tab to 预览/编辑. `edit` carries the double-click
+    // intent: the preview view jumps straight into edit mode once loaded.
+    // Deliberately NO showNotice here — an inline notice bar would shift the
+    // tree down mid-double-click, landing the second click on the wrong row.
+    filePreviewStore.open({ path: entry.path, name: entry.name }, edit)
+  }, [])
 
   // Header "+" targets the tree root (toggle open/close).
   const toggleRootCreate = useCallback((): void => {
@@ -352,7 +355,7 @@ export function FileExplorerPanel({ useWorkspaces, useSessions }: PanelProps) {
                 : null,
               ...kids.map(k => k.kind === 'dir'
                 ? renderDir(k.path, depth + 1)
-                : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} draggable onClick={() => openFile(k)} onDragStart={(e) => onDragStart(e, k.path)}>
+                : <div key={k.path} className="fex-row fex-file" style={{ paddingLeft: 8 + (depth + 1) * 14 }} draggable onClick={() => openFile(k)} onDoubleClick={(e) => { e.stopPropagation(); openFile(k, true) }} onDragStart={(e) => onDragStart(e, k.path)}>
                     <span className="fex-chevron"> </span>
                     <span className="fex-name">{k.name}</span>
                     <span className="fex-size">{fmt(k.size)}</span>

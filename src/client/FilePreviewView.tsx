@@ -76,7 +76,18 @@ export function FilePreviewView(_props: ConvViewProps) {
     setOriginalContent('')
     setIsDirty(false)
     try {
-      setResult(await api<ReadResult>('read', path))
+      const res = await api<ReadResult>('read', path)
+      setResult(res)
+      // Double-click intent (the tree's openFile(edit=true) set one pending
+      // edit): once the text content has loaded, jump straight into edit mode.
+      // consumeEdit() is one-shot, so a plain single-click (or a later reload
+      // of the same file) won't re-enter edit mode.
+      if (res.kind === 'text' && filePreviewStore.consumeEdit()) {
+        setEditContent(res.text)
+        setOriginalContent(res.text)
+        setIsEditing(true)
+        setIsDirty(false)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }

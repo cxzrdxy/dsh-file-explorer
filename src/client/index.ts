@@ -10,6 +10,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { FileExplorerPanel } from './FileExplorerPanel.tsx'
 import { FilePreviewView } from './FilePreviewView.tsx'
 import { FileDropZone } from './FileDropZone.tsx'
+import { FileViewActivator } from './FileViewActivator.tsx'
 
 export const inject = ['slots']
 
@@ -37,6 +38,16 @@ export function apply(ctx: ClientContext): void {
     order: 100,
     inject: () => ({}),
   }, FileDropZone))
+  // Session-scope view activator: watches the preview-file store and switches
+  // the conversation view to the preview/edit tab when a file opens. Also a
+  // conversation.input.overlay entry so it is mounted in every session (order
+  // below file-drop; renders null).
+  ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
+    name: 'conversation.input.overlay',
+    id: 'file-view-activator',
+    order: 90,
+    inject: () => ({}),
+  }, FileViewActivator))
 }
 
 const CSS = `

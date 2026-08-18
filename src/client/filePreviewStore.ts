@@ -110,6 +110,9 @@ const initialState: EditorState = {
 
 let state: EditorState = { ...initialState }
 const listeners = new Set<Listener>()
+// One-shot flag: the next opened file should jump straight into edit mode
+// (set by a tree double-click). Cleared on consume or on any plain `set`.
+let pendingEdit = false
 
 // Helper function: deep clone state
 function cloneState(s: EditorState): EditorState {
@@ -144,7 +147,26 @@ export const filePreviewStore = {
   },
 
   set(file: PreviewFile | null): void {
+    pendingEdit = false
     updateState({ file })
+  },
+
+  /**
+   * Open a file, optionally requesting the preview view to jump straight into
+   * edit mode (the tree's double-click gesture). `edit` is one-shot: it is
+   * cleared by {@link consumeEdit} once the view acts on it, or by any later
+   * `set`/`open` call.
+   */
+  open(file: PreviewFile | null, edit = false): void {
+    pendingEdit = edit
+    updateState({ file })
+  },
+
+  /** One-shot read of the edit intent; clears it so a later reload won't re-enter. */
+  consumeEdit(): boolean {
+    const v = pendingEdit
+    pendingEdit = false
+    return v
   },
 
   subscribe(listener: Listener): () => void {
