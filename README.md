@@ -96,3 +96,13 @@ dsh plugin --profile web add file:.
 ## 📄 License
 
 MIT
+
+## 🐛 更新日志
+
+### 0.3.5 (2026-08-18)
+
+- **修复编辑保存报错 `POST action must be create, delete, or update`**：预览/编辑页签的保存按钮原本向后端发送 `action: "write"`，但后端文件 API 只接受 `create` / `delete` / `update`，导致保存必返回 400。已将前端保存请求统一为 `action: "update"`（并带上 `expectedSize` 做乐观并发校验），与后端对齐。
+- **修复编辑框高度塌陷**：编辑态的 `<textarea>` 在 `flex` 列布局里未正确撑开，实际只有约 66×180px，大文件被裁成"只看到标题一行"。已为 `.fex-editor-textarea` 显式设置 `width:100%; height:100%; min-height:0; box-sizing:border-box`，使其完整撑满预览/编辑区，18KB 文档可在框内滚动编辑。
+
+> 注：本仓库早期 `src/` 为纯预览版本（无编辑按钮）。0.3.5 起 `src/` 已与线上运行代码对齐，包含完整的编辑/新建/删除 UI。
+

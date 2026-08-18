@@ -297,7 +297,7 @@ export function FileEditorView(_props: ConvViewProps) {
   const file = useSyncExternalStore(filePreviewStore.subscribe, filePreviewStore.get)
   const editorState = useSyncExternalStore(
     filePreviewStore.subscribe,
-    filePreviewStore.getEditorState
+    () => filePreviewStore.getEditorState()
   )
   const [result, setResult] = useState<ReadResult | null>(null)
   const [error, setError] = useState<string | null>(null)
